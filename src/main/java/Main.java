@@ -1,4 +1,6 @@
+import java.io.File;
 import java.util.Scanner;
+import java.util.regex.Pattern;
 
 public class Main {
 
@@ -6,6 +8,27 @@ public class Main {
         return cmd.equals("exit")
                 || cmd.equals("echo")
                 || cmd.equals("type");
+    }
+
+    private static String findExecutable(String command) {
+        String path = System.getenv("PATH");
+
+        if (path == null) {
+            return null;
+        }
+
+        String[] directories =
+                path.split(Pattern.quote(File.pathSeparator));
+
+        for (String dir : directories) {
+            File file = new File(dir, command);
+
+            if (file.exists() && file.canExecute()) {
+                return file.getAbsolutePath();
+            }
+        }
+
+        return null;
     }
 
     public static void main(String[] args) throws Exception {
@@ -26,7 +49,13 @@ public class Main {
                 if (isBuiltin(command)) {
                     System.out.println(command + " is a shell builtin");
                 } else {
-                    System.out.println(command + ": not found");
+                    String executable = findExecutable(command);
+
+                    if (executable != null) {
+                        System.out.println(command + " is " + executable);
+                    } else {
+                        System.out.println(command + ": not found");
+                    }
                 }
             } else {
                 System.out.println(input + ": command not found");
