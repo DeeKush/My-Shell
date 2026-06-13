@@ -8,7 +8,8 @@ public class Main {
     private static boolean isBuiltin(String cmd) {
         return cmd.equals("exit")
                 || cmd.equals("echo")
-                || cmd.equals("type");
+                || cmd.equals("type")
+                || cmd.equals("pwd");
     }
 
     private static String findExecutable(String command) {
@@ -38,6 +39,9 @@ public class Main {
 
         Scanner scanner = new Scanner(System.in);
 
+        File currentDirectory =
+                new File(System.getProperty("user.dir"));
+
         while (true) {
 
             System.out.print("$ ");
@@ -46,6 +50,10 @@ public class Main {
 
             if (input.equals("exit")) {
                 break;
+            }
+
+            else if (input.equals("pwd")) {
+                System.out.println(currentDirectory.getAbsolutePath());
             }
 
             else if (input.startsWith("echo ")) {
