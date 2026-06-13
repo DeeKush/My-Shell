@@ -9,7 +9,8 @@ public class Main {
         return cmd.equals("exit")
                 || cmd.equals("echo")
                 || cmd.equals("type")
-                || cmd.equals("pwd");
+                || cmd.equals("pwd")
+                || cmd.equals("cd");
     }
 
     private static String findExecutable(String command) {
@@ -54,6 +55,25 @@ public class Main {
 
             else if (input.equals("pwd")) {
                 System.out.println(currentDirectory.getAbsolutePath());
+            }
+
+            else if (input.startsWith("cd ")) {
+                String path = input.substring(3);
+                File targetDirectory;
+
+                if (new File(path).isAbsolute()) {
+                    targetDirectory = new File(path);
+                } else {
+                    targetDirectory = new File(currentDirectory, path);
+                }
+
+                targetDirectory = targetDirectory.getCanonicalFile();
+
+                if (targetDirectory.exists() && targetDirectory.isDirectory()) {
+                    currentDirectory = targetDirectory;
+                } else {
+                    System.out.println("cd: " + path + ": No such file or directory");
+                }
             }
 
             else if (input.startsWith("echo ")) {
