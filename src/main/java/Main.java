@@ -51,15 +51,28 @@ public class Main {
 
             char ch = input.charAt(i);
 
+            // Backslash outside quotes
+            if (!inSingleQuote && !inDoubleQuote && ch == '\\') {
+
+                if (i + 1 < input.length()) {
+                    current.append(input.charAt(i + 1));
+                    i++;
+                }
+
+                continue;
+            }
+
             if (ch == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
+                continue;
             }
 
-            else if (ch == '"' && !inSingleQuote) {
+            if (ch == '"' && !inSingleQuote) {
                 inDoubleQuote = !inDoubleQuote;
+                continue;
             }
 
-            else if (Character.isWhitespace(ch)
+            if (Character.isWhitespace(ch)
                     && !inSingleQuote
                     && !inDoubleQuote) {
 
