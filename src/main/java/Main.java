@@ -1,4 +1,5 @@
 import java.io.File;
+import java.io.IOException;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 
@@ -11,6 +12,7 @@ public class Main {
     }
 
     private static String findExecutable(String command) {
+
         String path = System.getenv("PATH");
 
         if (path == null) {
@@ -21,6 +23,7 @@ public class Main {
                 path.split(Pattern.quote(File.pathSeparator));
 
         for (String dir : directories) {
+
             File file = new File(dir, command);
 
             if (file.exists() && file.canExecute()) {
@@ -32,33 +35,75 @@ public class Main {
     }
 
     public static void main(String[] args) throws Exception {
+
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
+
             System.out.print("$ ");
 
             String input = scanner.nextLine();
 
             if (input.equals("exit")) {
                 break;
-            } else if (input.startsWith("echo ")) {
+            }
+
+            else if (input.startsWith("echo ")) {
                 System.out.println(input.substring(5));
-            } else if (input.startsWith("type ")) {
+            }
+
+            else if (input.startsWith("type ")) {
+
                 String command = input.substring(5);
 
                 if (isBuiltin(command)) {
                     System.out.println(command + " is a shell builtin");
-                } else {
+                }
+                else {
+
                     String executable = findExecutable(command);
 
                     if (executable != null) {
                         System.out.println(command + " is " + executable);
-                    } else {
+                    }
+                    else {
                         System.out.println(command + ": not found");
                     }
                 }
-            } else {
-                System.out.println(input + ": command not found");
+            }
+
+            else {
+
+                String[] commandParts = input.split(" ");
+
+                String commandName = commandParts[0];
+
+                String executable = findExecutable(commandName);
+
+                if (executable != null) {
+
+                    try {
+
+                        ProcessBuilder pb =
+                                new ProcessBuilder(commandParts);
+
+                        pb.inheritIO();
+
+                        Process process = pb.start();
+
+                        process.waitFor();
+
+                    } catch (IOException e) {
+                        System.out.println(
+                                commandName + ": command not found"
+                        );
+                    }
+                }
+                else {
+                    System.out.println(
+                            commandName + ": command not found"
+                    );
+                }
             }
         }
     }
