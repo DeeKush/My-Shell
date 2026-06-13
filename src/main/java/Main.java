@@ -30,7 +30,9 @@ public class Main {
 
             File file = new File(dir, command);
 
-            if (file.exists() && file.canExecute()) {
+            if (file.exists()
+                    && file.isFile()
+                    && file.canExecute()) {
                 return file.getAbsolutePath();
             }
         }
@@ -52,7 +54,9 @@ public class Main {
             char ch = input.charAt(i);
 
             // Backslash outside quotes
-            if (!inSingleQuote && !inDoubleQuote && ch == '\\') {
+            if (!inSingleQuote
+                    && !inDoubleQuote
+                    && ch == '\\') {
 
                 if (i + 1 < input.length()) {
                     current.append(input.charAt(i + 1));
@@ -161,11 +165,8 @@ public class Main {
 
                 if (path.equals("~")) {
 
-                    String homeDirectory =
-                            System.getenv("HOME");
-
                     targetDirectory =
-                            new File(homeDirectory);
+                            new File(System.getenv("HOME"));
 
                 } else if (new File(path).isAbsolute()) {
 
@@ -199,7 +200,9 @@ public class Main {
 
             else if (commandName.equals("echo")) {
 
-                for (int i = 1; i < commandParts.length; i++) {
+                for (int i = 1;
+                     i < commandParts.length;
+                     i++) {
 
                     if (i > 1) {
                         System.out.print(" ");
