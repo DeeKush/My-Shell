@@ -118,6 +118,8 @@ public class Main {
                         ProcessBuilder pb =
                                 new ProcessBuilder(commandParts);
 
+                        pb.directory(currentDirectory);
+
                         pb.inheritIO();
 
                         Process process = pb.start();
