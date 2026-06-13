@@ -62,6 +62,26 @@ public class Main {
                 continue;
             }
 
+            // Backslash inside double quotes
+            if (inDoubleQuote && ch == '\\') {
+
+                if (i + 1 < input.length()) {
+
+                    char next = input.charAt(i + 1);
+
+                    if (next == '"' || next == '\\') {
+                        current.append(next);
+                        i++;
+                        continue;
+                    }
+
+                    current.append('\\');
+                    current.append(next);
+                    i++;
+                    continue;
+                }
+            }
+
             if (ch == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
                 continue;
