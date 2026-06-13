@@ -45,18 +45,23 @@ public class Main {
         StringBuilder current = new StringBuilder();
 
         boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
 
         for (int i = 0; i < input.length(); i++) {
 
             char ch = input.charAt(i);
 
-            if (ch == '\'') {
-
+            if (ch == '\'' && !inDoubleQuote) {
                 inSingleQuote = !inSingleQuote;
             }
 
+            else if (ch == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+            }
+
             else if (Character.isWhitespace(ch)
-                    && !inSingleQuote) {
+                    && !inSingleQuote
+                    && !inDoubleQuote) {
 
                 if (current.length() > 0) {
 
@@ -66,7 +71,6 @@ public class Main {
             }
 
             else {
-
                 current.append(ch);
             }
         }
@@ -223,13 +227,9 @@ public class Main {
                     try {
 
                         ProcessBuilder pb =
-                                new ProcessBuilder(
-                                        commandParts
-                                );
+                                new ProcessBuilder(commandParts);
 
-                        pb.directory(
-                                currentDirectory
-                        );
+                        pb.directory(currentDirectory);
 
                         pb.inheritIO();
 
