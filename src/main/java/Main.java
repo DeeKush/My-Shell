@@ -61,7 +61,10 @@ public class Main {
                 String path = input.substring(3);
                 File targetDirectory;
 
-                if (new File(path).isAbsolute()) {
+                if (path.equals("~")) {
+                    String homeDirectory = System.getenv("HOME");
+                    targetDirectory = new File(homeDirectory);
+                } else if (new File(path).isAbsolute()) {
                     targetDirectory = new File(path);
                 } else {
                     targetDirectory = new File(currentDirectory, path);
