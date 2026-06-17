@@ -1,5 +1,7 @@
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
@@ -23,8 +25,7 @@ public class Main {
             return null;
         }
 
-        String[] directories =
-                path.split(Pattern.quote(File.pathSeparator));
+        String[] directories = path.split(Pattern.quote(File.pathSeparator));
 
         for (String dir : directories) {
 
@@ -119,6 +120,34 @@ public class Main {
         return args.toArray(new String[0]);
     }
 
+    private static void createParentDirs(String filePath) {
+        if (filePath != null) {
+            File file = new File(filePath);
+            File parent = file.getParentFile();
+            if (parent != null) {
+                parent.mkdirs();
+            }
+        }
+    }
+
+    private static void writeOutput(
+            String text,
+            String redirectFile) throws IOException {
+
+        if (redirectFile != null) {
+            createParentDirs(redirectFile);
+            try (PrintWriter writer = new PrintWriter(
+                    new FileWriter(
+                            redirectFile,
+                            false))) {
+
+                writer.println(text);
+            }
+        } else {
+            System.out.println(text);
+        }
+    }
+
     public static void main(String[] args) throws Exception {
 
         Scanner scanner = new Scanner(System.in);
@@ -135,6 +164,36 @@ public class Main {
             String[] commandParts =
                     parseCommand(input);
 
+            String redirectFile = null;
+
+            List<String> cleanedArgs =
+                    new ArrayList<>();
+
+            for (int i = 0; i < commandParts.length; i++) {
+
+                if (commandParts[i].equals(">") ||
+                        commandParts[i].equals("1>")) {
+
+                    if (i + 1 < commandParts.length) {
+                        redirectFile =
+                                commandParts[i + 1];
+                    }
+
+                    i++; // skip filename
+
+                } else {
+
+                    cleanedArgs.add(
+                            commandParts[i]
+                    );
+                }
+            }
+
+            commandParts =
+                    cleanedArgs.toArray(
+                            new String[0]
+                    );
+
             if (commandParts.length == 0) {
                 continue;
             }
@@ -148,8 +207,9 @@ public class Main {
 
             else if (commandName.equals("pwd")) {
 
-                System.out.println(
-                        currentDirectory.getAbsolutePath()
+                writeOutput(
+                        currentDirectory.getAbsolutePath(),
+                        redirectFile
                 );
             }
 
@@ -166,7 +226,9 @@ public class Main {
                 if (path.equals("~")) {
 
                     targetDirectory =
-                            new File(System.getenv("HOME"));
+                            new File(
+                                    System.getenv("HOME")
+                            );
 
                 } else if (new File(path).isAbsolute()) {
 
@@ -176,7 +238,10 @@ public class Main {
                 } else {
 
                     targetDirectory =
-                            new File(currentDirectory, path);
+                            new File(
+                                    currentDirectory,
+                                    path
+                            );
                 }
 
                 targetDirectory =
@@ -200,18 +265,26 @@ public class Main {
 
             else if (commandName.equals("echo")) {
 
+                StringBuilder output =
+                        new StringBuilder();
+
                 for (int i = 1;
                      i < commandParts.length;
                      i++) {
 
                     if (i > 1) {
-                        System.out.print(" ");
+                        output.append(" ");
                     }
 
-                    System.out.print(commandParts[i]);
+                    output.append(
+                            commandParts[i]
+                    );
                 }
 
-                System.out.println();
+                writeOutput(
+                        output.toString(),
+                        redirectFile
+                );
             }
 
             else if (commandName.equals("type")) {
@@ -223,12 +296,13 @@ public class Main {
                 String command =
                         commandParts[1];
 
+                String output;
+
                 if (isBuiltin(command)) {
 
-                    System.out.println(
+                    output =
                             command
-                                    + " is a shell builtin"
-                    );
+                                    + " is a shell builtin";
 
                 } else {
 
@@ -237,20 +311,23 @@ public class Main {
 
                     if (executable != null) {
 
-                        System.out.println(
+                        output =
                                 command
                                         + " is "
-                                        + executable
-                        );
+                                        + executable;
 
                     } else {
 
-                        System.out.println(
+                        output =
                                 command
-                                        + ": not found"
-                        );
+                                        + ": not found";
                     }
                 }
+
+                writeOutput(
+                        output,
+                        redirectFile
+                );
             }
 
             else {
@@ -263,11 +340,33 @@ public class Main {
                     try {
 
                         ProcessBuilder pb =
-                                new ProcessBuilder(commandParts);
+                                new ProcessBuilder(
+                                        commandParts
+                                );
 
-                        pb.directory(currentDirectory);
+                        pb.directory(
+                                currentDirectory
+                        );
 
-                        pb.inheritIO();
+                        if (redirectFile != null) {
+                            pb.redirectOutput(
+                                    new File(
+                                            redirectFile
+                                    )
+                            );
+                        } else {
+                            pb.redirectOutput(
+                                    ProcessBuilder.Redirect.INHERIT
+                            );
+                        }
+
+                        pb.redirectError(
+                                ProcessBuilder.Redirect.INHERIT
+                        );
+
+                        pb.redirectInput(
+                                ProcessBuilder.Redirect.INHERIT
+                        );
 
                         Process process =
                                 pb.start();
