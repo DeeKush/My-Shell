@@ -130,6 +130,16 @@ public class Main {
         }
     }
 
+    private static void touchFile(String filePath) throws IOException {
+        if (filePath != null) {
+            createParentDirs(filePath);
+            File file = new File(filePath);
+            try (FileWriter fw = new FileWriter(file, false)) {
+                // Truncate/create file
+            }
+        }
+    }
+
     private static void writeOutput(
             String text,
             String redirectFile) throws IOException {
@@ -139,6 +149,24 @@ public class Main {
             try (PrintWriter writer = new PrintWriter(
                     new FileWriter(
                             redirectFile,
+                            false))) {
+
+                writer.println(text);
+            }
+        } else {
+            System.out.println(text);
+        }
+    }
+
+    private static void writeError(
+            String text,
+            String redirectErrFile) throws IOException {
+
+        if (redirectErrFile != null) {
+            createParentDirs(redirectErrFile);
+            try (PrintWriter writer = new PrintWriter(
+                    new FileWriter(
+                            redirectErrFile,
                             false))) {
 
                 writer.println(text);
@@ -165,6 +193,7 @@ public class Main {
                     parseCommand(input);
 
             String redirectFile = null;
+            String redirectErrFile = null;
 
             List<String> cleanedArgs =
                     new ArrayList<>();
@@ -176,6 +205,15 @@ public class Main {
 
                     if (i + 1 < commandParts.length) {
                         redirectFile =
+                                commandParts[i + 1];
+                    }
+
+                    i++; // skip filename
+
+                } else if (commandParts[i].equals("2>")) {
+
+                    if (i + 1 < commandParts.length) {
+                        redirectErrFile =
                                 commandParts[i + 1];
                     }
 
@@ -200,6 +238,14 @@ public class Main {
 
             String commandName =
                     commandParts[0];
+
+            // Touch files immediately to create/truncate them
+            if (redirectFile != null) {
+                touchFile(redirectFile);
+            }
+            if (redirectErrFile != null) {
+                touchFile(redirectErrFile);
+            }
 
             if (commandName.equals("exit")) {
                 break;
@@ -255,10 +301,11 @@ public class Main {
 
                 } else {
 
-                    System.out.println(
+                    writeError(
                             "cd: "
                                     + path
-                                    + ": No such file or directory"
+                                    + ": No such file or directory",
+                            redirectErrFile
                     );
                 }
             }
@@ -360,9 +407,17 @@ public class Main {
                             );
                         }
 
-                        pb.redirectError(
-                                ProcessBuilder.Redirect.INHERIT
-                        );
+                        if (redirectErrFile != null) {
+                            pb.redirectError(
+                                    new File(
+                                            redirectErrFile
+                                    )
+                            );
+                        } else {
+                            pb.redirectError(
+                                    ProcessBuilder.Redirect.INHERIT
+                            );
+                        }
 
                         pb.redirectInput(
                                 ProcessBuilder.Redirect.INHERIT
@@ -375,17 +430,19 @@ public class Main {
 
                     } catch (IOException e) {
 
-                        System.out.println(
+                        writeError(
                                 commandName
-                                        + ": command not found"
+                                        + ": command not found",
+                                redirectErrFile
                         );
                     }
 
                 } else {
 
-                    System.out.println(
+                    writeError(
                             commandName
-                                    + ": command not found"
+                                    + ": command not found",
+                            redirectErrFile
                     );
                 }
             }
