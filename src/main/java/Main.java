@@ -41,83 +41,103 @@ public class Main {
         return null;
     }
 
-    private static String[] parseCommand(String input) {
+    private static List<String> parseCommandLine(String input) {
+        List<String> arguments = new ArrayList<>();
+        StringBuilder currentArgument = new StringBuilder();
 
-        List<String> args = new ArrayList<>();
-
-        StringBuilder current = new StringBuilder();
-
-        boolean inSingleQuote = false;
-        boolean inDoubleQuote = false;
+        boolean insideSingleQuotes = false;
+        boolean insideDoubleQuotes = false;
+        boolean argumentStarted = false;
 
         for (int i = 0; i < input.length(); i++) {
-
             char ch = input.charAt(i);
 
-            // Backslash outside quotes
-            if (!inSingleQuote
-                    && !inDoubleQuote
-                    && ch == '\\') {
-
-                if (i + 1 < input.length()) {
-                    current.append(input.charAt(i + 1));
-                    i++;
+            /*
+             * Everything inside single quotes is literal.
+             */
+            if (insideSingleQuotes) {
+                if (ch == '\'') {
+                    insideSingleQuotes = false;
+                } else {
+                    currentArgument.append(ch);
                 }
 
+                argumentStarted = true;
                 continue;
             }
 
-            // Backslash inside double quotes
-            if (inDoubleQuote && ch == '\\') {
+            /*
+             * Inside double quotes, backslash escapes only
+             * double quote and backslash for these stages.
+             */
+            if (insideDoubleQuotes) {
+                if (ch == '"') {
+                    insideDoubleQuotes = false;
+                    argumentStarted = true;
 
-                if (i + 1 < input.length()) {
+                } else if (ch == '\\') {
+                    if (i + 1 < input.length()) {
+                        char next = input.charAt(i + 1);
 
-                    char next = input.charAt(i + 1);
-
-                    if (next == '"' || next == '\\') {
-                        current.append(next);
-                        i++;
-                        continue;
+                        if (next == '"' || next == '\\') {
+                            currentArgument.append(next);
+                            i++;
+                        } else {
+                            currentArgument.append('\\');
+                        }
+                    } else {
+                        currentArgument.append('\\');
                     }
 
-                    current.append('\\');
-                    current.append(next);
+                    argumentStarted = true;
+
+                } else {
+                    currentArgument.append(ch);
+                    argumentStarted = true;
+                }
+
+                continue;
+            }
+
+            /*
+             * Outside quotes.
+             */
+            if (ch == '\'') {
+                insideSingleQuotes = true;
+                argumentStarted = true;
+
+            } else if (ch == '"') {
+                insideDoubleQuotes = true;
+                argumentStarted = true;
+
+            } else if (ch == '\\') {
+                if (i + 1 < input.length()) {
+                    currentArgument.append(input.charAt(i + 1));
                     i++;
-                    continue;
+                } else {
+                    currentArgument.append('\\');
                 }
-            }
 
-            if (ch == '\'' && !inDoubleQuote) {
-                inSingleQuote = !inSingleQuote;
-                continue;
-            }
+                argumentStarted = true;
 
-            if (ch == '"' && !inSingleQuote) {
-                inDoubleQuote = !inDoubleQuote;
-                continue;
-            }
-
-            if (Character.isWhitespace(ch)
-                    && !inSingleQuote
-                    && !inDoubleQuote) {
-
-                if (current.length() > 0) {
-
-                    args.add(current.toString());
-                    current.setLength(0);
+            } else if (Character.isWhitespace(ch)) {
+                if (argumentStarted) {
+                    arguments.add(currentArgument.toString());
+                    currentArgument.setLength(0);
+                    argumentStarted = false;
                 }
-            }
 
-            else {
-                current.append(ch);
+            } else {
+                currentArgument.append(ch);
+                argumentStarted = true;
             }
         }
 
-        if (current.length() > 0) {
-            args.add(current.toString());
+        if (argumentStarted) {
+            arguments.add(currentArgument.toString());
         }
 
-        return args.toArray(new String[0]);
+        return arguments;
     }
 
     private static void createParentDirs(String filePath) {
@@ -192,7 +212,7 @@ public class Main {
             String input = scanner.nextLine();
 
             String[] commandParts =
-                    parseCommand(input);
+                    parseCommandLine(input).toArray(new String[0]);
 
             String redirectFile = null;
             String redirectErrFile = null;
