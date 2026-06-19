@@ -273,6 +273,99 @@ public class Main {
         }
     }
 
+    private static void handleEcho(
+            List<String> commandParts,
+            String stdoutFile,
+            boolean appendStdout
+    ) throws IOException {
+
+        String output = "";
+
+        if (commandParts.size() > 1) {
+            output = String.join(
+                    " ",
+                    commandParts.subList(
+                            1,
+                            commandParts.size()
+                    )
+            );
+        }
+
+        writeOutput(
+                output,
+                stdoutFile,
+                appendStdout
+        );
+    }
+
+    private static void changeDirectory(
+            String directory,
+            String stderrFile,
+            boolean appendStderr
+    ) throws IOException {
+
+        Path newDirectory;
+
+        if (directory.equals("~")) {
+            String home = System.getenv("HOME");
+
+            if (home == null || home.isEmpty()) {
+                writeError(
+                        "cd: ~: No such file or directory",
+                        stderrFile,
+                        appendStderr
+                );
+
+                return;
+            }
+
+            newDirectory = Paths.get(home);
+
+        } else {
+            Path requestedPath =
+                    Paths.get(directory);
+
+            if (requestedPath.isAbsolute()) {
+                newDirectory = requestedPath;
+            } else {
+                newDirectory =
+                        currentDirectory.resolve(requestedPath);
+            }
+        }
+
+        newDirectory =
+                newDirectory.toAbsolutePath().normalize();
+
+        if (Files.isDirectory(newDirectory)) {
+            currentDirectory = newDirectory;
+
+        } else {
+            writeError(
+                    "cd: " + directory
+                            + ": No such file or directory",
+                    stderrFile,
+                    appendStderr
+            );
+        }
+    }
+
+    private static String getTypeResult(
+            String command
+    ) {
+        if (isBuiltin(command)) {
+            return command + " is a shell builtin";
+        }
+
+        String executablePath =
+                findExecutable(command);
+
+        if (executablePath != null) {
+            return command + " is " + executablePath;
+        }
+
+        return command + ": not found";
+    }
+
     public static void main(String[] args) throws Exception {
 
         Scanner scanner = new Scanner(System.in);
@@ -283,298 +376,175 @@ public class Main {
 
             String input = scanner.nextLine();
 
-            String[] commandParts =
-                    parseCommandLine(input).toArray(new String[0]);
+            List<String> commandParts = parseCommandLine(input);
 
-            String redirectFile = null;
-            String redirectErrFile = null;
-            boolean appendOut = false;
-            boolean appendErr = false;
-
-            List<String> cleanedArgs =
-                    new ArrayList<>();
-
-            for (int i = 0; i < commandParts.length; i++) {
-
-                if (commandParts[i].equals(">") ||
-                        commandParts[i].equals("1>")) {
-
-                    if (i + 1 < commandParts.length) {
-                        redirectFile =
-                                commandParts[i + 1];
-                        appendOut = false;
-                    }
-
-                    i++; // skip filename
-
-                } else if (commandParts[i].equals(">>") ||
-                        commandParts[i].equals("1>>")) {
-
-                    if (i + 1 < commandParts.length) {
-                        redirectFile =
-                                commandParts[i + 1];
-                        appendOut = true;
-                    }
-
-                    i++; // skip filename
-
-                } else if (commandParts[i].equals("2>")) {
-
-                    if (i + 1 < commandParts.length) {
-                        redirectErrFile =
-                                commandParts[i + 1];
-                        appendErr = false;
-                    }
-
-                    i++; // skip filename
-
-                } else if (commandParts[i].equals("2>>")) {
-
-                    if (i + 1 < commandParts.length) {
-                        redirectErrFile =
-                                commandParts[i + 1];
-                        appendErr = true;
-                    }
-
-                    i++; // skip filename
-
-                } else {
-
-                    cleanedArgs.add(
-                            commandParts[i]
-                    );
-                }
-            }
-
-            commandParts =
-                    cleanedArgs.toArray(
-                            new String[0]
-                    );
-
-            if (commandParts.length == 0) {
+            if (commandParts.isEmpty()) {
                 continue;
             }
 
-            String commandName =
-                    commandParts[0];
+            String stdoutFile = null;
+            String stderrFile = null;
 
-            // Touch files immediately to create/truncate them (only if in overwrite mode)
-            if (redirectFile != null && !appendOut) {
-                truncateFile(redirectFile);
-            }
-            if (redirectErrFile != null && !appendErr) {
-                truncateFile(redirectErrFile);
+            boolean appendStdout = false;
+            boolean appendStderr = false;
+
+            List<String> actualCommandParts = new ArrayList<>();
+
+            for (int i = 0; i < commandParts.size(); i++) {
+                String token = commandParts.get(i);
+
+                if (token.equals(">") || token.equals("1>")) {
+                    if (i + 1 < commandParts.size()) {
+                        stdoutFile = commandParts.get(++i);
+                        appendStdout = false;
+                    }
+
+                } else if (token.equals(">>")
+                        || token.equals("1>>")) {
+
+                    if (i + 1 < commandParts.size()) {
+                        stdoutFile = commandParts.get(++i);
+                        appendStdout = true;
+                    }
+
+                } else if (token.equals("2>")) {
+                    if (i + 1 < commandParts.size()) {
+                        stderrFile = commandParts.get(++i);
+                        appendStderr = false;
+                    }
+
+                } else if (token.equals("2>>")) {
+                    if (i + 1 < commandParts.size()) {
+                        stderrFile = commandParts.get(++i);
+                        appendStderr = true;
+                    }
+
+                } else {
+                    actualCommandParts.add(token);
+                }
             }
 
-            if (commandName.equals("exit")) {
+            commandParts = actualCommandParts;
+
+            if (commandParts.isEmpty()) {
+                continue;
+            }
+
+            if (stdoutFile != null && !appendStdout) {
+                truncateFile(stdoutFile);
+            }
+            if (stderrFile != null && !appendStderr) {
+                truncateFile(stderrFile);
+            }
+
+            String command = commandParts.get(0);
+
+            if (command.equals("exit")) {
                 break;
-            }
 
-            else if (commandName.equals("pwd")) {
+            } else if (command.equals("echo")) {
+                handleEcho(
+                        commandParts,
+                        stdoutFile,
+                        appendStdout
+                );
 
+            } else if (command.equals("pwd")) {
                 writeOutput(
                         currentDirectory.toString(),
-                        redirectFile,
-                        appendOut
+                        stdoutFile,
+                        appendStdout
                 );
-            }
 
-            else if (commandName.equals("cd")) {
-
-                if (commandParts.length < 2) {
-                    continue;
+            } else if (command.equals("cd")) {
+                if (commandParts.size() >= 2) {
+                    changeDirectory(
+                            commandParts.get(1),
+                            stderrFile,
+                            appendStderr
+                    );
                 }
 
-                String path = commandParts[1];
-
-                Path targetDirectory;
-
-                if (path.equals("~")) {
-                    String home = System.getenv("HOME");
-
-                    if (home == null || home.isEmpty()) {
-                        writeError(
-                                "cd: ~: No such file or directory",
-                                redirectErrFile,
-                                appendErr
-                        );
-                        continue;
-                    }
-
-                    targetDirectory = Paths.get(home);
-
-                } else {
-                    Path requestedPath = Paths.get(path);
-
-                    if (requestedPath.isAbsolute()) {
-                        targetDirectory = requestedPath;
-                    } else {
-                        targetDirectory =
-                                currentDirectory.resolve(requestedPath);
-                    }
+            } else if (command.equals("type")) {
+                if (commandParts.size() >= 2) {
+                    writeOutput(
+                            getTypeResult(commandParts.get(1)),
+                            stdoutFile,
+                            appendStdout
+                    );
                 }
 
-                targetDirectory =
-                        targetDirectory.toAbsolutePath().normalize();
+            } else {
+                String programName = commandParts.get(0);
 
-                if (Files.isDirectory(targetDirectory)) {
-                    currentDirectory = targetDirectory;
-
-                } else {
+                if (findExecutable(programName) == null) {
                     writeError(
-                            "cd: " + path
-                                    + ": No such file or directory",
-                            redirectErrFile,
-                            appendErr
+                            programName + ": command not found",
+                            stderrFile,
+                            appendStderr
                     );
-                }
-            }
 
-            else if (commandName.equals("echo")) {
-
-                StringBuilder output =
-                        new StringBuilder();
-
-                for (int i = 1;
-                     i < commandParts.length;
-                     i++) {
-
-                    if (i > 1) {
-                        output.append(" ");
-                    }
-
-                    output.append(
-                            commandParts[i]
-                    );
-                }
-
-                writeOutput(
-                        output.toString(),
-                        redirectFile,
-                        appendOut
-                );
-            }
-
-            else if (commandName.equals("type")) {
-
-                if (commandParts.length < 2) {
                     continue;
                 }
 
-                String command =
-                        commandParts[1];
+                try {
+                    ProcessBuilder processBuilder =
+                            new ProcessBuilder(commandParts);
 
-                String output;
+                    processBuilder.directory(
+                            currentDirectory.toFile()
+                    );
 
-                if (isBuiltin(command)) {
+                    processBuilder.redirectInput(
+                            ProcessBuilder.Redirect.INHERIT
+                    );
 
-                    output =
-                            command
-                                    + " is a shell builtin";
-
-                } else {
-
-                    String executable =
-                            findExecutable(command);
-
-                    if (executable != null) {
-
-                        output =
-                                command
-                                        + " is "
-                                        + executable;
-
-                    } else {
-
-                        output =
-                                command
-                                        + ": not found";
-                    }
-                }
-
-                writeOutput(
-                        output,
-                        redirectFile,
-                        appendOut
-                );
-            }
-
-            else {
-
-                String executable =
-                        findExecutable(commandName);
-
-                if (executable != null) {
-
-                    try {
-
-                        ProcessBuilder pb =
-                                new ProcessBuilder(
-                                        commandParts
-                                );
-
-                        pb.directory(
-                                currentDirectory.toFile()
-                        );
-
-                        if (redirectFile != null) {
-                            if (appendOut) {
-                                pb.redirectOutput(
-                                        ProcessBuilder.Redirect.appendTo(resolvePath(redirectFile).toFile())
-                                );
-                            } else {
-                                pb.redirectOutput(
-                                        ProcessBuilder.Redirect.to(resolvePath(redirectFile).toFile())
-                                );
-                            }
-                        } else {
-                            pb.redirectOutput(
-                                    ProcessBuilder.Redirect.INHERIT
-                            );
-                        }
-
-                        if (redirectErrFile != null) {
-                            if (appendErr) {
-                                pb.redirectError(
-                                        ProcessBuilder.Redirect.appendTo(resolvePath(redirectErrFile).toFile())
-                                );
-                            } else {
-                                pb.redirectError(
-                                        ProcessBuilder.Redirect.to(resolvePath(redirectErrFile).toFile())
-                                );
-                            }
-                        } else {
-                            pb.redirectError(
-                                    ProcessBuilder.Redirect.INHERIT
-                            );
-                        }
-
-                        pb.redirectInput(
+                    if (stdoutFile == null) {
+                        processBuilder.redirectOutput(
                                 ProcessBuilder.Redirect.INHERIT
                         );
 
-                        Process process =
-                                pb.start();
+                    } else {
+                        File file = resolvePath(stdoutFile).toFile();
 
-                        process.waitFor();
-
-                    } catch (IOException e) {
-
-                        writeError(
-                                commandName
-                                        + ": command not found",
-                                redirectErrFile,
-                                appendErr
-                        );
+                        if (appendStdout) {
+                            processBuilder.redirectOutput(
+                                    ProcessBuilder.Redirect.appendTo(file)
+                            );
+                        } else {
+                            processBuilder.redirectOutput(
+                                    ProcessBuilder.Redirect.to(file)
+                            );
+                        }
                     }
 
-                } else {
+                    if (stderrFile == null) {
+                        processBuilder.redirectError(
+                                ProcessBuilder.Redirect.INHERIT
+                        );
 
+                    } else {
+                        File file = resolvePath(stderrFile).toFile();
+
+                        if (appendStderr) {
+                            processBuilder.redirectError(
+                                    ProcessBuilder.Redirect.appendTo(file)
+                            );
+                        } else {
+                            processBuilder.redirectError(
+                                    ProcessBuilder.Redirect.to(file)
+                            );
+                        }
+                    }
+
+                    Process process = processBuilder.start();
+                    process.waitFor();
+
+                } catch (IOException e) {
                     writeError(
-                            commandName
-                                    + ": command not found",
-                            redirectErrFile,
-                            appendErr
+                            programName + ": command not found",
+                            stderrFile,
+                            appendStderr
                     );
                 }
             }
