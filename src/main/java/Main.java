@@ -2,12 +2,20 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 
 public class Main {
+
+    private static Path currentDirectory =
+            Paths.get("").toAbsolutePath().normalize();
 
     private static boolean isBuiltin(String cmd) {
         return cmd.equals("exit")
@@ -140,70 +148,134 @@ public class Main {
         return arguments;
     }
 
-    private static void createParentDirs(String filePath) {
-        if (filePath != null) {
-            File file = new File(filePath);
-            File parent = file.getParentFile();
-            if (parent != null) {
-                parent.mkdirs();
-            }
+    private static Path resolvePath(
+            String fileName
+    ) {
+        Path path = Paths.get(fileName);
+
+        if (path.isAbsolute()) {
+            return path.normalize();
         }
+
+        return currentDirectory
+                .resolve(path)
+                .normalize();
     }
 
-    private static void touchFile(String filePath) throws IOException {
-        if (filePath != null) {
-            createParentDirs(filePath);
-            File file = new File(filePath);
-            try (FileWriter fw = new FileWriter(file, false)) {
-                // Truncate/create file
-            }
+    private static void truncateFile(
+            String fileName
+    ) throws IOException {
+
+        Files.writeString(
+                resolvePath(fileName),
+                "",
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+        );
+    }
+
+    private static void ensureFileExists(
+            String fileName
+    ) throws IOException {
+
+        Path filePath = resolvePath(fileName);
+
+        if (!Files.exists(filePath)) {
+            Files.createFile(filePath);
         }
     }
 
     private static void writeOutput(
             String text,
-            String redirectFile,
-            boolean append) throws IOException {
+            String stdoutFile,
+            boolean appendStdout
+    ) throws IOException {
 
-        if (redirectFile != null) {
-            createParentDirs(redirectFile);
-            try (PrintWriter writer = new PrintWriter(
-                    new FileWriter(
-                            redirectFile,
-                            append))) {
+        writeExactOutput(
+                text + System.lineSeparator(),
+                stdoutFile,
+                appendStdout
+        );
+    }
 
-                writer.println(text);
-            }
+    private static void writeExactOutput(
+            String text,
+            String stdoutFile,
+            boolean appendStdout
+    ) throws IOException {
+
+        if (stdoutFile == null) {
+            System.out.print(text);
+            System.out.flush();
+            return;
+        }
+
+        Path filePath = resolvePath(stdoutFile);
+
+        if (appendStdout) {
+            Files.writeString(
+                    filePath,
+                    text,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND,
+                    StandardOpenOption.WRITE
+            );
+
         } else {
-            System.out.println(text);
+            Files.writeString(
+                    filePath,
+                    text,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE
+            );
         }
     }
 
     private static void writeError(
             String text,
-            String redirectErrFile,
-            boolean append) throws IOException {
+            String stderrFile,
+            boolean appendStderr
+    ) throws IOException {
 
-        if (redirectErrFile != null) {
-            createParentDirs(redirectErrFile);
-            try (PrintWriter writer = new PrintWriter(
-                    new FileWriter(
-                            redirectErrFile,
-                            append))) {
+        if (stderrFile == null) {
+            System.err.println(text);
+            return;
+        }
 
-                writer.println(text);
-            }
+        Path filePath = resolvePath(stderrFile);
+        String output =
+                text + System.lineSeparator();
+
+        if (appendStderr) {
+            Files.writeString(
+                    filePath,
+                    output,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND,
+                    StandardOpenOption.WRITE
+            );
+
         } else {
-            System.out.println(text);
+            Files.writeString(
+                    filePath,
+                    output,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE
+            );
         }
     }
 
     public static void main(String[] args) throws Exception {
 
         Scanner scanner = new Scanner(System.in);
-
-        File currentDirectory =
-                new File(System.getProperty("user.dir"));
 
         while (true) {
 
@@ -288,10 +360,10 @@ public class Main {
 
             // Touch files immediately to create/truncate them (only if in overwrite mode)
             if (redirectFile != null && !appendOut) {
-                touchFile(redirectFile);
+                truncateFile(redirectFile);
             }
             if (redirectErrFile != null && !appendErr) {
-                touchFile(redirectErrFile);
+                truncateFile(redirectErrFile);
             }
 
             if (commandName.equals("exit")) {
@@ -301,7 +373,7 @@ public class Main {
             else if (commandName.equals("pwd")) {
 
                 writeOutput(
-                        currentDirectory.getAbsolutePath(),
+                        currentDirectory.toString(),
                         redirectFile,
                         appendOut
                 );
@@ -315,43 +387,42 @@ public class Main {
 
                 String path = commandParts[1];
 
-                File targetDirectory;
+                Path targetDirectory;
 
                 if (path.equals("~")) {
+                    String home = System.getenv("HOME");
 
-                    targetDirectory =
-                            new File(
-                                    System.getenv("HOME")
-                            );
+                    if (home == null || home.isEmpty()) {
+                        writeError(
+                                "cd: ~: No such file or directory",
+                                redirectErrFile,
+                                appendErr
+                        );
+                        continue;
+                    }
 
-                } else if (new File(path).isAbsolute()) {
-
-                    targetDirectory =
-                            new File(path);
+                    targetDirectory = Paths.get(home);
 
                 } else {
+                    Path requestedPath = Paths.get(path);
 
-                    targetDirectory =
-                            new File(
-                                    currentDirectory,
-                                    path
-                            );
+                    if (requestedPath.isAbsolute()) {
+                        targetDirectory = requestedPath;
+                    } else {
+                        targetDirectory =
+                                currentDirectory.resolve(requestedPath);
+                    }
                 }
 
                 targetDirectory =
-                        targetDirectory.getCanonicalFile();
+                        targetDirectory.toAbsolutePath().normalize();
 
-                if (targetDirectory.exists()
-                        && targetDirectory.isDirectory()) {
-
-                    currentDirectory =
-                            targetDirectory;
+                if (Files.isDirectory(targetDirectory)) {
+                    currentDirectory = targetDirectory;
 
                 } else {
-
                     writeError(
-                            "cd: "
-                                    + path
+                            "cd: " + path
                                     + ": No such file or directory",
                             redirectErrFile,
                             appendErr
@@ -443,18 +514,17 @@ public class Main {
                                 );
 
                         pb.directory(
-                                currentDirectory
+                                currentDirectory.toFile()
                         );
 
                         if (redirectFile != null) {
-                            createParentDirs(redirectFile);
                             if (appendOut) {
                                 pb.redirectOutput(
-                                        ProcessBuilder.Redirect.appendTo(new File(redirectFile))
+                                        ProcessBuilder.Redirect.appendTo(resolvePath(redirectFile).toFile())
                                 );
                             } else {
                                 pb.redirectOutput(
-                                        ProcessBuilder.Redirect.to(new File(redirectFile))
+                                        ProcessBuilder.Redirect.to(resolvePath(redirectFile).toFile())
                                 );
                             }
                         } else {
@@ -464,14 +534,13 @@ public class Main {
                         }
 
                         if (redirectErrFile != null) {
-                            createParentDirs(redirectErrFile);
                             if (appendErr) {
                                 pb.redirectError(
-                                        ProcessBuilder.Redirect.appendTo(new File(redirectErrFile))
+                                        ProcessBuilder.Redirect.appendTo(resolvePath(redirectErrFile).toFile())
                                 );
                             } else {
                                 pb.redirectError(
-                                        ProcessBuilder.Redirect.to(new File(redirectErrFile))
+                                        ProcessBuilder.Redirect.to(resolvePath(redirectErrFile).toFile())
                                 );
                             }
                         } else {
