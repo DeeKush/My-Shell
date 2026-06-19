@@ -33,12 +33,15 @@ public class Main {
         }
     }
 
-    private static boolean isBuiltin(String cmd) {
-        return cmd.equals("exit")
-                || cmd.equals("echo")
-                || cmd.equals("type")
-                || cmd.equals("pwd")
-                || cmd.equals("cd");
+    private static boolean isBuiltin(
+            String command
+    ) {
+        return command.equals("echo")
+                || command.equals("exit")
+                || command.equals("type")
+                || command.equals("pwd")
+                || command.equals("cd")
+                || command.equals("jobs");
     }
 
     private static String findExecutable(String command) {
@@ -797,6 +800,16 @@ public class Main {
                     + newline;
         }
 
+        if (command.equals("jobs")) {
+            String output = buildJobsOutput();
+
+            if (output.isEmpty()) {
+                return "";
+            }
+
+            return output + newline;
+        }
+
         if (command.equals("cd")) {
             if (commandParts.size() >= 2) {
                 changeDirectory(
@@ -912,6 +925,203 @@ public class Main {
         );
     }
 
+    private static void handleJobs(
+            String stdoutFile,
+            boolean appendStdout
+    ) throws IOException {
+
+        String output = buildJobsOutput();
+
+        if (output.isEmpty()) {
+            if (stdoutFile != null) {
+                if (appendStdout) {
+                    ensureFileExists(stdoutFile);
+                } else {
+                    truncateFile(stdoutFile);
+                }
+            }
+
+            return;
+        }
+
+        writeOutput(
+                output,
+                stdoutFile,
+                appendStdout
+        );
+    }
+
+    private static String buildJobsOutput() {
+        if (jobs.isEmpty()) {
+            return "";
+        }
+
+        Job currentJob =
+                jobs.get(jobs.size() - 1);
+
+        Job previousJob = jobs.size() >= 2
+                ? jobs.get(jobs.size() - 2)
+                : null;
+
+        List<Job> jobsToDisplay =
+                new ArrayList<>(jobs);
+
+        jobsToDisplay.sort(
+                (first, second) ->
+                        Integer.compare(
+                                first.jobNumber,
+                                second.jobNumber
+                        )
+        );
+
+        StringBuilder output = new StringBuilder();
+        List<Job> completedJobs = new ArrayList<>();
+
+        for (int i = 0; i < jobsToDisplay.size(); i++) {
+            Job job = jobsToDisplay.get(i);
+
+            String marker =
+                    getJobMarker(
+                            job,
+                            currentJob,
+                            previousJob
+                    );
+
+            boolean finished =
+                    hasProcessFinished(job.process);
+
+            String status;
+            String displayedCommand;
+
+            if (finished) {
+                status = "Done";
+
+                displayedCommand =
+                        removeTrailingAmpersand(job.command);
+
+                reapProcess(job.process);
+                completedJobs.add(job);
+
+            } else {
+                status = "Running";
+                displayedCommand = job.command;
+            }
+
+            output.append(
+                    String.format(
+                            "[%d]%s  %-24s%s",
+                            job.jobNumber,
+                            marker,
+                            status,
+                            displayedCommand
+                    )
+            );
+
+            if (i < jobsToDisplay.size() - 1) {
+                output.append(System.lineSeparator());
+            }
+        }
+
+        jobs.removeAll(completedJobs);
+
+        return output.toString();
+    }
+
+    private static void runExternalCommand(
+            List<String> commandParts,
+            String stdoutFile,
+            boolean appendStdout,
+            String stderrFile,
+            boolean appendStderr,
+            boolean runInBackground,
+            String originalCommand
+    ) throws Exception {
+
+        String programName = commandParts.get(0);
+
+        if (findExecutable(programName) == null) {
+            writeError(
+                    programName + ": command not found",
+                    stderrFile,
+                    appendStderr
+            );
+
+            return;
+        }
+
+        ProcessBuilder processBuilder =
+                new ProcessBuilder(commandParts);
+
+        processBuilder.directory(
+                currentDirectory.toFile()
+        );
+
+        processBuilder.redirectInput(
+                ProcessBuilder.Redirect.INHERIT
+        );
+
+        if (stdoutFile == null) {
+            processBuilder.redirectOutput(
+                    ProcessBuilder.Redirect.INHERIT
+            );
+
+        } else {
+            File file = resolvePath(stdoutFile).toFile();
+
+            if (appendStdout) {
+                processBuilder.redirectOutput(
+                        ProcessBuilder.Redirect.appendTo(file)
+                );
+            } else {
+                processBuilder.redirectOutput(
+                        ProcessBuilder.Redirect.to(file)
+                );
+            }
+        }
+
+        if (stderrFile == null) {
+            processBuilder.redirectError(
+                    ProcessBuilder.Redirect.INHERIT
+            );
+
+        } else {
+            File file = resolvePath(stderrFile).toFile();
+
+            if (appendStderr) {
+                processBuilder.redirectError(
+                        ProcessBuilder.Redirect.appendTo(file)
+                );
+            } else {
+                processBuilder.redirectError(
+                        ProcessBuilder.Redirect.to(file)
+                );
+            }
+        }
+
+        Process process = processBuilder.start();
+
+        if (runInBackground) {
+            int jobNumber =
+                    getSmallestAvailableJobNumber();
+
+            jobs.add(
+                    new Job(
+                            jobNumber,
+                            process,
+                            originalCommand
+                    )
+            );
+
+            System.out.println(
+                    "[" + jobNumber + "] "
+                            + process.pid()
+            );
+
+        } else {
+            process.waitFor();
+        }
+    }
+
     public static void main(String[] args) throws Exception {
 
         Scanner scanner = new Scanner(System.in);
@@ -921,6 +1131,8 @@ public class Main {
             System.out.print("$ ");
 
             String input = scanner.nextLine();
+
+            String originalCommand = input.trim();
 
             List<String> commandParts = parseCommandLine(input);
 
@@ -971,6 +1183,20 @@ public class Main {
             }
 
             commandParts = actualCommandParts;
+
+            /*
+             * A final & means background execution.
+             */
+            boolean runInBackground = false;
+
+            if (!commandParts.isEmpty()
+                    && commandParts
+                    .get(commandParts.size() - 1)
+                    .equals("&")) {
+
+                runInBackground = true;
+                commandParts.remove(commandParts.size() - 1);
+            }
 
             if (commandParts.isEmpty()) {
                 continue;
@@ -1032,79 +1258,22 @@ public class Main {
                     );
                 }
 
+            } else if (command.equals("jobs")) {
+                handleJobs(
+                        stdoutFile,
+                        appendStdout
+                );
+
             } else {
-                String programName = commandParts.get(0);
-
-                if (findExecutable(programName) == null) {
-                    writeError(
-                            programName + ": command not found",
-                            stderrFile,
-                            appendStderr
-                    );
-
-                    continue;
-                }
-
-                try {
-                    ProcessBuilder processBuilder =
-                            new ProcessBuilder(commandParts);
-
-                    processBuilder.directory(
-                            currentDirectory.toFile()
-                    );
-
-                    processBuilder.redirectInput(
-                            ProcessBuilder.Redirect.INHERIT
-                    );
-
-                    if (stdoutFile == null) {
-                        processBuilder.redirectOutput(
-                                ProcessBuilder.Redirect.INHERIT
-                        );
-
-                    } else {
-                        File file = resolvePath(stdoutFile).toFile();
-
-                        if (appendStdout) {
-                            processBuilder.redirectOutput(
-                                    ProcessBuilder.Redirect.appendTo(file)
-                            );
-                        } else {
-                            processBuilder.redirectOutput(
-                                    ProcessBuilder.Redirect.to(file)
-                            );
-                        }
-                    }
-
-                    if (stderrFile == null) {
-                        processBuilder.redirectError(
-                                ProcessBuilder.Redirect.INHERIT
-                        );
-
-                    } else {
-                        File file = resolvePath(stderrFile).toFile();
-
-                        if (appendStderr) {
-                            processBuilder.redirectError(
-                                    ProcessBuilder.Redirect.appendTo(file)
-                            );
-                        } else {
-                            processBuilder.redirectError(
-                                    ProcessBuilder.Redirect.to(file)
-                            );
-                        }
-                    }
-
-                    Process process = processBuilder.start();
-                    process.waitFor();
-
-                } catch (IOException e) {
-                    writeError(
-                            programName + ": command not found",
-                            stderrFile,
-                            appendStderr
-                    );
-                }
+                runExternalCommand(
+                        commandParts,
+                        stdoutFile,
+                        appendStdout,
+                        stderrFile,
+                        appendStderr,
+                        runInBackground,
+                        originalCommand
+                );
             }
         }
     }
