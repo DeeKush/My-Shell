@@ -366,6 +366,49 @@ public class Main {
         return command + ": not found";
     }
 
+    private static List<List<String>> splitPipeline(
+            List<String> tokens
+    ) {
+        List<List<String>> stages = new ArrayList<>();
+        List<String> currentStage = new ArrayList<>();
+
+        for (String token : tokens) {
+            if (token.equals("|")) {
+                if (currentStage.isEmpty()) {
+                    return null;
+                }
+
+                stages.add(currentStage);
+                currentStage = new ArrayList<>();
+            } else {
+                currentStage.add(token);
+            }
+        }
+
+        if (currentStage.isEmpty()) {
+            return null;
+        }
+
+        stages.add(currentStage);
+
+        return stages;
+    }
+
+    private static void runPipeline(
+            List<String> tokens,
+            String stdoutFile,
+            boolean appendStdout,
+            String stderrFile,
+            boolean appendStderr
+    ) throws Exception {
+
+        List<List<String>> stages = splitPipeline(tokens);
+
+        if (stages == null || stages.size() < 2) {
+            return;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
 
         Scanner scanner = new Scanner(System.in);
@@ -435,6 +478,18 @@ public class Main {
             }
             if (stderrFile != null && !appendStderr) {
                 truncateFile(stderrFile);
+            }
+
+            if (commandParts.contains("|")) {
+                runPipeline(
+                        commandParts,
+                        stdoutFile,
+                        appendStdout,
+                        stderrFile,
+                        appendStderr
+                );
+
+                continue;
             }
 
             String command = commandParts.get(0);
