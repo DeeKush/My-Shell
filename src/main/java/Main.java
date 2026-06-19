@@ -142,14 +142,15 @@ public class Main {
 
     private static void writeOutput(
             String text,
-            String redirectFile) throws IOException {
+            String redirectFile,
+            boolean append) throws IOException {
 
         if (redirectFile != null) {
             createParentDirs(redirectFile);
             try (PrintWriter writer = new PrintWriter(
                     new FileWriter(
                             redirectFile,
-                            false))) {
+                            append))) {
 
                 writer.println(text);
             }
@@ -160,14 +161,15 @@ public class Main {
 
     private static void writeError(
             String text,
-            String redirectErrFile) throws IOException {
+            String redirectErrFile,
+            boolean append) throws IOException {
 
         if (redirectErrFile != null) {
             createParentDirs(redirectErrFile);
             try (PrintWriter writer = new PrintWriter(
                     new FileWriter(
                             redirectErrFile,
-                            false))) {
+                            append))) {
 
                 writer.println(text);
             }
@@ -194,6 +196,8 @@ public class Main {
 
             String redirectFile = null;
             String redirectErrFile = null;
+            boolean appendOut = false;
+            boolean appendErr = false;
 
             List<String> cleanedArgs =
                     new ArrayList<>();
@@ -206,6 +210,18 @@ public class Main {
                     if (i + 1 < commandParts.length) {
                         redirectFile =
                                 commandParts[i + 1];
+                        appendOut = false;
+                    }
+
+                    i++; // skip filename
+
+                } else if (commandParts[i].equals(">>") ||
+                        commandParts[i].equals("1>>")) {
+
+                    if (i + 1 < commandParts.length) {
+                        redirectFile =
+                                commandParts[i + 1];
+                        appendOut = true;
                     }
 
                     i++; // skip filename
@@ -215,6 +231,17 @@ public class Main {
                     if (i + 1 < commandParts.length) {
                         redirectErrFile =
                                 commandParts[i + 1];
+                        appendErr = false;
+                    }
+
+                    i++; // skip filename
+
+                } else if (commandParts[i].equals("2>>")) {
+
+                    if (i + 1 < commandParts.length) {
+                        redirectErrFile =
+                                commandParts[i + 1];
+                        appendErr = true;
                     }
 
                     i++; // skip filename
@@ -239,11 +266,11 @@ public class Main {
             String commandName =
                     commandParts[0];
 
-            // Touch files immediately to create/truncate them
-            if (redirectFile != null) {
+            // Touch files immediately to create/truncate them (only if in overwrite mode)
+            if (redirectFile != null && !appendOut) {
                 touchFile(redirectFile);
             }
-            if (redirectErrFile != null) {
+            if (redirectErrFile != null && !appendErr) {
                 touchFile(redirectErrFile);
             }
 
@@ -255,7 +282,8 @@ public class Main {
 
                 writeOutput(
                         currentDirectory.getAbsolutePath(),
-                        redirectFile
+                        redirectFile,
+                        appendOut
                 );
             }
 
@@ -305,7 +333,8 @@ public class Main {
                             "cd: "
                                     + path
                                     + ": No such file or directory",
-                            redirectErrFile
+                            redirectErrFile,
+                            appendErr
                     );
                 }
             }
@@ -330,7 +359,8 @@ public class Main {
 
                 writeOutput(
                         output.toString(),
-                        redirectFile
+                        redirectFile,
+                        appendOut
                 );
             }
 
@@ -373,7 +403,8 @@ public class Main {
 
                 writeOutput(
                         output,
-                        redirectFile
+                        redirectFile,
+                        appendOut
                 );
             }
 
@@ -396,11 +427,16 @@ public class Main {
                         );
 
                         if (redirectFile != null) {
-                            pb.redirectOutput(
-                                    new File(
-                                            redirectFile
-                                    )
-                            );
+                            createParentDirs(redirectFile);
+                            if (appendOut) {
+                                pb.redirectOutput(
+                                        ProcessBuilder.Redirect.appendTo(new File(redirectFile))
+                                );
+                            } else {
+                                pb.redirectOutput(
+                                        ProcessBuilder.Redirect.to(new File(redirectFile))
+                                );
+                            }
                         } else {
                             pb.redirectOutput(
                                     ProcessBuilder.Redirect.INHERIT
@@ -408,11 +444,16 @@ public class Main {
                         }
 
                         if (redirectErrFile != null) {
-                            pb.redirectError(
-                                    new File(
-                                            redirectErrFile
-                                    )
-                            );
+                            createParentDirs(redirectErrFile);
+                            if (appendErr) {
+                                pb.redirectError(
+                                        ProcessBuilder.Redirect.appendTo(new File(redirectErrFile))
+                                );
+                            } else {
+                                pb.redirectError(
+                                        ProcessBuilder.Redirect.to(new File(redirectErrFile))
+                                );
+                            }
                         } else {
                             pb.redirectError(
                                     ProcessBuilder.Redirect.INHERIT
@@ -433,7 +474,8 @@ public class Main {
                         writeError(
                                 commandName
                                         + ": command not found",
-                                redirectErrFile
+                                redirectErrFile,
+                                appendErr
                         );
                     }
 
@@ -442,7 +484,8 @@ public class Main {
                     writeError(
                             commandName
                                     + ": command not found",
-                            redirectErrFile
+                            redirectErrFile,
+                            appendErr
                     );
                 }
             }
