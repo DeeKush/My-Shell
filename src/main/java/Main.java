@@ -19,6 +19,20 @@ public class Main {
     private static Path currentDirectory =
             Paths.get("").toAbsolutePath().normalize();
 
+    private static final List<Job> jobs = new ArrayList<>();
+
+    private static class Job {
+        private final int jobNumber;
+        private final Process process;
+        private final String command;
+
+        Job(int jobNumber, Process process, String command) {
+            this.jobNumber = jobNumber;
+            this.process = process;
+            this.command = command;
+        }
+    }
+
     private static boolean isBuiltin(String cmd) {
         return cmd.equals("exit")
                 || cmd.equals("echo")
@@ -827,6 +841,75 @@ public class Main {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static boolean hasProcessFinished(
+            Process process
+    ) {
+        if (!process.isAlive()) {
+            return true;
+        }
+
+        try {
+            /*
+             * Avoid a timing race when a FIFO closes and the
+             * process exits a few milliseconds later.
+             */
+            return process.waitFor(
+                    100,
+                    TimeUnit.MILLISECONDS
+            );
+
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private static String getJobMarker(
+            Job job,
+            Job currentJob,
+            Job currentPreviousJob
+    ) {
+        if (job == currentJob) {
+            return "+";
+        }
+
+        if (job == currentPreviousJob) {
+            return "-";
+        }
+
+        return " ";
+    }
+
+    private static int getSmallestAvailableJobNumber() {
+        int candidate = 1;
+
+        while (true) {
+            boolean used = false;
+
+            for (Job job : jobs) {
+                if (job.jobNumber == candidate) {
+                    used = true;
+                    break;
+                }
+            }
+
+            if (!used) {
+                return candidate;
+            }
+
+            candidate++;
+        }
+    }
+
+    private static String removeTrailingAmpersand(
+            String command
+    ) {
+        return command.replaceFirst(
+                "\\s*&\\s*$",
+                ""
+        );
     }
 
     public static void main(String[] args) throws Exception {
