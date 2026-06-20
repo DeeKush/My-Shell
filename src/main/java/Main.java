@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-
 public class Main {
 
     private static Path currentDirectory =
@@ -1124,12 +1123,64 @@ public class Main {
         }
     }
 
+    private static void reapCompletedJobsBeforePrompt() {
+        if (jobs.isEmpty()) {
+            return;
+        }
+
+        Job currentJob =
+                jobs.get(jobs.size() - 1);
+
+        Job previousJob = jobs.size() >= 2
+                ? jobs.get(jobs.size() - 2)
+                : null;
+
+        List<Job> jobsToCheck =
+                new ArrayList<>(jobs);
+
+        jobsToCheck.sort(
+                (first, second) ->
+                        Integer.compare(
+                                first.jobNumber,
+                                second.jobNumber
+                        )
+        );
+
+        List<Job> completedJobs = new ArrayList<>();
+
+        for (Job job : jobsToCheck) {
+            if (hasProcessFinished(job.process)) {
+                String marker =
+                        getJobMarker(
+                                job,
+                                currentJob,
+                                previousJob
+                        );
+
+                reapProcess(job.process);
+
+                System.out.printf(
+                        "[%d]%s  %-24s%s%n",
+                        job.jobNumber,
+                        marker,
+                        "Done",
+                        removeTrailingAmpersand(job.command)
+                );
+
+                completedJobs.add(job);
+            }
+        }
+
+        jobs.removeAll(completedJobs);
+    }
+
     public static void main(String[] args) throws Exception {
 
         BufferedReader reader =
                 new BufferedReader(new InputStreamReader(System.in));
 
         while (true) {
+            reapCompletedJobsBeforePrompt();
 
             System.out.print("$ ");
             System.out.flush();
