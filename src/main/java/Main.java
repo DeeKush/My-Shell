@@ -1,5 +1,7 @@
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -8,7 +10,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 
 
@@ -1125,13 +1126,19 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
 
-        Scanner scanner = new Scanner(System.in);
+        BufferedReader reader =
+                new BufferedReader(new InputStreamReader(System.in));
 
         while (true) {
 
             System.out.print("$ ");
+            System.out.flush();
 
-            String input = scanner.nextLine();
+            String input = reader.readLine();
+
+            if (input == null) {
+                break;
+            }
 
             String originalCommand = input.trim();
 
