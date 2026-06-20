@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 
 public class Main {
@@ -43,24 +42,27 @@ public class Main {
                 || command.equals("jobs");
     }
 
-    private static String findExecutable(String command) {
+    private static String findExecutable(
+            String command
+    ) {
+        String pathEnvironment =
+                System.getenv("PATH");
 
-        String path = System.getenv("PATH");
-
-        if (path == null) {
+        if (pathEnvironment == null
+                || pathEnvironment.isEmpty()) {
             return null;
         }
 
-        String[] directories = path.split(Pattern.quote(File.pathSeparator));
+        String[] directories =
+                pathEnvironment.split(File.pathSeparator);
 
-        for (String dir : directories) {
+        for (String directory : directories) {
+            File executable =
+                    new File(directory, command);
 
-            File file = new File(dir, command);
-
-            if (file.exists()
-                    && file.isFile()
-                    && file.canExecute()) {
-                return file.getAbsolutePath();
+            if (executable.isFile()
+                    && executable.canExecute()) {
+                return executable.getPath();
             }
         }
 
